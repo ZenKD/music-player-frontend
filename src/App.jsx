@@ -1,128 +1,151 @@
-import { useState, useEffect, useRef } from 'react';
-import * as jsmediatags from 'jsmediatags'; // <--- NEW IMPORT
+import { useState, useEffect } from 'react';
+import { useAudioPlayer } from './useAudioPlayer'; // Import our new logic
+import * as jsmediatags from 'jsmediatags';
 import './App.css';
 
-function App() {
-  const [songs, setSongs] = useState([]);
-  const [currentSong, setCurrentSong] = useState(null);
-  const [currentCover, setCurrentCover] = useState(null); // <--- NEW STATE FOR IMAGE
-  const [searchTerm, setSearchTerm] = useState(""); 
-  const audioRef = useRef(null);
+const API_URL = 'https://my-music-api-p380.onrender.com'; // CHECK YOUR URL
 
-  // 1. Fetch Songs
+function App() {
+  const [view, setView] = useState('library'); // 'library' or 'playlists'
+  const [songs, setSongs] = useState([]);
+  const [playlists, setPlaylists] = useState([]);
+  const [selectedPlaylist, setSelectedPlaylist] = useState(null);
+  const [newPlaylistName, setNewPlaylistName] = useState("");
+  const [currentCover, setCurrentCover] = useState(null);
+  
+  // The Player Logic
+  const { 
+    currentSong, isPlaying, playTrack, togglePlay, nextTrack, prevTrack, toggleShuffle, isShuffle 
+  } = useAudioPlayer();
+
+  // Load Initial Data
   useEffect(() => {
-    fetch('https://my-music-api-p380.onrender.com/songs') 
-      .then(res => res.json())
-      .then(data => setSongs(data))
-      .catch(err => console.error("Error:", err));
+    fetch(`${API_URL}/songs`).then(res => res.json()).then(setSongs);
+    fetch(`${API_URL}/playlists`).then(res => res.json()).then(setPlaylists);
   }, []);
 
-  // 2. Extract Album Art (The Magic Function)
-  const extractArt = (song) => {
-    // Reset to default while loading
-    setCurrentCover(null); 
-    
-    // We use the 'jsmediatags' library to read the file header
-    jsmediatags.read(song.songUrl, {
+  // Extract Art (Same as before)
+  useEffect(() => {
+    if(!currentSong) return;
+    jsmediatags.read(currentSong.songUrl, {
       onSuccess: (tag) => {
         const picture = tag.tags.picture;
         if (picture) {
-          // Convert the raw data to a standard image URL
-          const { data, format } = picture;
-          let base64String = "";
-          for (let i = 0; i < data.length; i++) {
-            base64String += String.fromCharCode(data[i]);
-          }
-          const imageUri = `data:${format};base64,${window.btoa(base64String)}`;
-          setCurrentCover(imageUri);
-        } else {
-          setCurrentCover(null); // No image found in file
-        }
+          const base64String = picture.data.map(char => String.fromCharCode(char)).join('');
+          setCurrentCover(`data:${picture.format};base64,${window.btoa(base64String)}`);
+        } else setCurrentCover(null);
       },
-      onError: (error) => {
-        console.log("Art extraction error:", error);
-        setCurrentCover(null);
-      }
+      onError: () => setCurrentCover(null)
     });
-  };
-
-  // 3. Play Logic
-  const playSong = (song) => {
-    setCurrentSong(song);
-    extractArt(song); // <--- TRIGGER EXTRACTION
-  };
-
-  useEffect(() => {
-    if (currentSong && audioRef.current) {
-      audioRef.current.play();
-    }
   }, [currentSong]);
 
-  const filteredSongs = songs.filter(song => {
-    const title = song.title ? song.title.toString().toLowerCase() : "";
-    const artist = song.artist ? song.artist.toString().toLowerCase() : "";
-    const search = searchTerm.toLowerCase();
-    return title.includes(search) || artist.includes(search);
-  });
+  // Playlist Functions
+  const createPlaylist = async () => {
+    if (!newPlaylistName) return;
+    // For simplicity, creating a playlist starts empty or with current song
+    // Here we just create an empty file first
+    await fetch(`${API_URL}/playlists`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ name: newPlaylistName, songs: [] })
+    });
+    setNewPlaylistName("");
+    // Refresh list
+    fetch(`${API_URL}/playlists`).then(res => res.json()).then(setPlaylists);
+  };
+
+  const addToPlaylist = async (song, playlistName) => {
+    // 1. Get current playlist
+    const res = await fetch(`${API_URL}/playlists/${playlistName}`);
+    const currentSongs = await res.json();
+    
+    // 2. Add new song
+    const updatedSongs = [...currentSongs, song];
+    
+    // 3. Save back
+    await fetch(`${API_URL}/playlists`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ name: playlistName, songs: updatedSongs })
+    });
+    alert(`Added to ${playlistName}`);
+  };
+
+  const openPlaylist = async (name) => {
+    const res = await fetch(`${API_URL}/playlists/${name}`);
+    const data = await res.json();
+    setSongs(data); // Temporarily replace the "Library" view with Playlist songs
+    setView('library');
+    setSelectedPlaylist(name);
+  };
 
   return (
     <div className="app-container">
       <header>
         <h1>🎵 My Music Cloud</h1>
-        <input 
-          type="text" 
-          placeholder="Search..." 
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          style={{ padding: '10px', width: '100%', borderRadius: '5px', border: 'none', marginTop: '10px' }}
-        />
+        <div className="nav-buttons">
+          <button onClick={() => { setView('library'); setSelectedPlaylist(null); fetch(`${API_URL}/songs`).then(res => res.json()).then(setSongs); }}>All Songs</button>
+          <button onClick={() => setView('playlists')}>Playlists</button>
+        </div>
       </header>
 
-      <main>
-        <div className="song-list">
-          <h2>Library ({filteredSongs.length})</h2>
+      {view === 'playlists' && (
+        <div className="playlist-manager">
+          <div className="create-box">
+            <input value={newPlaylistName} onChange={e => setNewPlaylistName(e.target.value)} placeholder="New Playlist Name" />
+            <button onClick={createPlaylist}>Create</button>
+          </div>
           <ul>
-            {filteredSongs.map((song) => (
-              <li 
-                key={song._id} 
-                onClick={() => playSong(song)} 
-                className={currentSong?._id === song._id ? 'active' : ''}
-              >
-                <div>
-                  <span className="song-title">{song.title}</span>
-                  <span className="song-artist">{song.artist}</span>
-                </div>
+            {playlists.map(pl => (
+              <li key={pl.name} onClick={() => openPlaylist(pl.name)}>
+                📂 {pl.name}
               </li>
             ))}
           </ul>
         </div>
+      )}
 
-        {/* UPDATED PLAYER BAR WITH ART */}
-        <div className="player-bar">
-          
-          {/* Album Art Box */}
-          <div className="album-art">
-            {currentCover ? (
-              <img src={currentCover} alt="Album Art" />
-            ) : (
-              <div className="placeholder-art">🎵</div>
-            )}
-          </div>
+      {view === 'library' && (
+        <main>
+          <h2>{selectedPlaylist ? `📂 ${selectedPlaylist}` : "Library"}</h2>
+          <ul>
+            {songs.map((song) => (
+              <li key={song._id}>
+                <div onClick={() => playTrack(song, songs)} style={{flexGrow: 1}}>
+                  <span className="song-title">{song.title}</span>
+                  <span className="song-artist">{song.artist}</span>
+                </div>
+                {/* Quick "Add to Playlist" Button (Demo: Adds to first playlist found) */}
+                {playlists.length > 0 && (
+                  <button className="add-btn" onClick={(e) => { e.stopPropagation(); addToPlaylist(song, playlists[0].name); }}>
+                    + {playlists[0].name}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </main>
+      )}
 
-          <div className="now-playing-info">
-            {currentSong ? (
-              <>
-                <strong>{currentSong.title}</strong>
-                <span>{currentSong.artist}</span>
-              </>
-            ) : (
-              <span>Select a song</span>
-            )}
-          </div>
-          
-          <audio ref={audioRef} src={currentSong?.songUrl} controls autoPlay />
+      {/* NEW PLAYER BAR WITH CONTROLS */}
+      <div className="player-bar">
+        <div className="album-art">
+          {currentCover ? <img src={currentCover} /> : <div className="placeholder-art">🎵</div>}
         </div>
-      </main>
+
+        <div className="controls">
+          <button onClick={prevTrack}>⏮</button>
+          <button onClick={togglePlay}>{isPlaying ? "⏸" : "▶"}</button>
+          <button onClick={nextTrack}>⏭</button>
+          <button onClick={toggleShuffle} style={{color: isShuffle ? '#1db954' : 'white'}}>🔀</button>
+        </div>
+
+        <div className="now-playing-info">
+          {currentSong ? (
+            <><strong>{currentSong.title}</strong><span>{currentSong.artist}</span></>
+          ) : <span>Select a song</span>}
+        </div>
+      </div>
     </div>
   );
 }
