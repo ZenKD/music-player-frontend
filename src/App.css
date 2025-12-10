@@ -1,47 +1,4 @@
-/* Dark Mode Spotify-ish Style */
-:root {
-  --bg-color: #121212;
-  --card-color: #181818;
-  --text-primary: #ffffff;
-  --text-secondary: #b3b3b3;
-  --accent: #1db954;
-}
-
-body {
-  margin: 0;
-  background-color: var(--bg-color);
-  color: var(--text-primary);
-  font-family: sans-serif;
-}
-
-.app-container {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 20px;
-  padding-bottom: 100px; /* Space for player bar */
-}
-
-h1 { color: var(--accent); }
-
-ul { list-style: none; padding: 0; }
-
-li {
-  display: flex;
-  justify-content: space-between;
-  padding: 10px 15px;
-  background: var(--card-color);
-  margin-bottom: 8px;
-  cursor: pointer;
-  border-radius: 4px;
-  transition: background 0.2s;
-}
-
-li:hover { background: #282828; }
-li.active { color: var(--accent); border: 1px solid var(--accent); }
-
-.song-artist { color: var(--text-secondary); font-size: 0.9em; }
-
-/* Fixed Player Bar at Bottom */
+/* Player Bar Layout */
 .player-bar {
   position: fixed;
   bottom: 0;
@@ -49,12 +6,59 @@ li.active { color: var(--accent); border: 1px solid var(--accent); }
   width: 100%;
   background: #282828;
   border-top: 1px solid #333;
-  padding: 15px;
+  padding: 10px 20px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 15px; /* Space between items */
   box-sizing: border-box;
+  z-index: 1000;
 }
 
-.now-playing { display: flex; flex-direction: column; width: 200px; }
-audio { width: 100%; max-width: 500px; }
+/* Album Art Styles */
+.album-art {
+  width: 50px;
+  height: 50px;
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.album-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.placeholder-art {
+  font-size: 24px;
+  color: #555;
+}
+
+/* Info Text */
+.now-playing-info {
+  display: flex;
+  flex-direction: column;
+  width: 150px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.now-playing-info strong {
+  font-size: 0.9rem;
+}
+
+.now-playing-info span {
+  font-size: 0.75rem;
+  color: #b3b3b3;
+}
+
+/* Audio Player */
+audio {
+  flex-grow: 1; /* Takes up remaining space */
+  height: 35px;
+}
