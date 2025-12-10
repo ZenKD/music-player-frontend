@@ -14,10 +14,10 @@ function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, songId: null });
 
-  // NEW UI STATES
+  // UI STATES
   const [showQueue, setShowQueue] = useState(false);
   const [showLyrics, setShowLyrics] = useState(false);
-  const [lyricsText, setLyricsText] = useState("Loading lyrics...");
+  const [lyricsText, setLyricsText] = useState("Loading...");
 
   const { 
     currentSong, queue, isPlaying, progress, duration, volume, loopMode, isShuffle,
@@ -31,21 +31,17 @@ function App() {
   };
   useEffect(() => { loadData(); }, []);
 
-  // Fetch Lyrics when song changes
+  // Fetch Lyrics
   useEffect(() => {
     if (!currentSong || !showLyrics) return;
-    setLyricsText("Searching for lyrics...");
-    
-    // Use free API to find lyrics
+    setLyricsText("Searching...");
     fetch(`https://api.lyrics.ovh/v1/${currentSong.artist}/${currentSong.title}`)
       .then(res => res.json())
-      .then(data => {
-        setLyricsText(data.lyrics ? data.lyrics : "Lyrics not found for this track.");
-      })
-      .catch(() => setLyricsText("Could not load lyrics."));
+      .then(data => setLyricsText(data.lyrics || "Lyrics not found."))
+      .catch(() => setLyricsText("Lyrics not available."));
   }, [currentSong, showLyrics]);
 
-  // Album Art Extraction
+  // Extract Art
   useEffect(() => {
     if(!currentSong) return;
     jsmediatags.read(currentSong.songUrl, {
@@ -60,16 +56,17 @@ function App() {
     });
   }, [currentSong]);
 
-  // Handlers (Context Menu, Add Playlist, Sync) - Same as before
+  // Context Menu Logic
   const handleContextMenu = (e, songId) => {
     e.preventDefault();
-    setContextMenu({ visible: true, x: e.pageX, y: e.pageY, songId: songId });
+    setContextMenu({ visible: true, x: e.clientX, y: e.clientY, songId });
   };
   useEffect(() => {
     const handleClick = () => setContextMenu({ ...contextMenu, visible: false });
     document.addEventListener('click', handleClick);
     return () => document.removeEventListener('click', handleClick);
   }, [contextMenu]);
+
   const addToPlaylist = async (playlistId) => {
     await fetch(`${API_URL}/playlists/${playlistId}/add`, {
       method: 'POST',
@@ -78,9 +75,10 @@ function App() {
     });
     loadData();
   };
+
   const createPlaylist = async () => {
-    const name = prompt("Enter playlist name:");
-    if (name) {
+    const name = prompt("Playlist Name:");
+    if(name) {
       await fetch(`${API_URL}/playlists`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -89,12 +87,12 @@ function App() {
       loadData();
     }
   };
+
   const handleSync = async () => {
     await fetch(`${API_URL}/sync`, { method: 'POST' });
     loadData();
   };
 
-  // Helper: Format Time
   const formatTime = (s) => {
     if (!s) return "0:00";
     const mins = Math.floor(s / 60);
@@ -102,80 +100,63 @@ function App() {
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
+  // Filter
   const songsDisplay = activePlaylist ? activePlaylist.songs : songs;
   const filteredSongs = songsDisplay.filter(s => s.title.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
     <div className="app-layout">
-      
       {/* SIDEBAR */}
-      <aside className="sidebar">
-        <div className="logo">🎵 My Music</div>
+      <div className="sidebar">
+        <div className="logo">🎵 Music</div>
         <div className="nav-links">
           <button onClick={() => { setActivePlaylist(null); setShowLyrics(false); setShowQueue(false); }}>🏠 Home</button>
-          <button onClick={handleSync}>🔄 Sync Library</button>
+          <button onClick={handleSync}>🔄 Sync</button>
         </div>
         <div className="playlists-section">
-          <div className="playlist-header"><span>YOUR LIBRARY</span><button onClick={createPlaylist}>+</button></div>
+          <div style={{marginBottom: '10px', color:'#b3b3b3', fontSize:'12px', fontWeight:'bold'}}>PLAYLISTS <button onClick={createPlaylist} style={{background:'none', border:'none', color:'#fff', cursor:'pointer'}}>+</button></div>
           <div className="playlist-list">
             {playlists.map(pl => (
-              <div key={pl._id} className={`playlist-item ${activePlaylist?._id === pl._id ? 'active' : ''}`} onClick={() => setActivePlaylist(pl)}>
+              <div key={pl._id} className={activePlaylist?._id === pl._id ? 'active' : ''} onClick={() => setActivePlaylist(pl)}>
                 {pl.name}
               </div>
             ))}
           </div>
         </div>
-      </aside>
+      </div>
 
-      {/* MAIN CONTENT AREA (Switches between Library, Queue, Lyrics) */}
-      <main className="main-view" style={showLyrics ? {background: 'linear-gradient(to bottom, #444, #111)'} : {}}>
-        
-        {/* --- VIEW 1: LYRICS --- */}
+      {/* MAIN CONTENT */}
+      <div className="main-view">
         {showLyrics ? (
           <div className="lyrics-view">
-            <div className="lyrics-header">
-              <img src={currentCover} className="lyrics-art" alt="" />
-              <div>
-                <h1>{currentSong?.title}</h1>
-                <h3>{currentSong?.artist}</h3>
-              </div>
-            </div>
+            <img src={currentCover} style={{width:200, height:200, borderRadius:10, marginBottom:20}} />
             <div className="lyrics-text">{lyricsText}</div>
           </div>
         ) : showQueue ? (
-          
-          /* --- VIEW 2: QUEUE --- */
           <div className="queue-view">
             <h1>Queue</h1>
-            <h3>Now Playing</h3>
-            <div className="queue-item active">
-               {currentSong ? `${currentSong.title} - ${currentSong.artist}` : "Nothing playing"}
-            </div>
-            <h3>Next Up</h3>
             {queue.map((s, i) => (
               <div key={i} className="queue-item" onClick={() => playTrack(s)}>
-                <span style={{color:'#888', marginRight:'10px'}}>{i+1}</span>
-                {s.title} - <span style={{color:'#888'}}>{s.artist}</span>
+                {i+1}. {s.title} - {s.artist}
               </div>
             ))}
           </div>
         ) : (
-
-          /* --- VIEW 3: LIBRARY (Default) --- */
           <>
             <div className="main-header">
               <input type="text" placeholder="Search..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
             </div>
+            
             <div className="playlist-banner">
               <div className="banner-art">{activePlaylist ? '📂' : '❤️'}</div>
-              <div className="banner-info">
-                <p>Playlist</p>
+              <div>
+                <p>PLAYLIST</p>
                 <h1>{activePlaylist ? activePlaylist.name : "Liked Songs"}</h1>
                 <p>{filteredSongs.length} songs</p>
               </div>
             </div>
+
             <div className="songs-table">
-              <div className="table-header"><span>#</span><span>Title</span><span>Duration</span></div>
               {filteredSongs.map((song, index) => (
                 <div 
                   key={song._id} 
@@ -183,67 +164,61 @@ function App() {
                   onClick={() => playTrack(song, filteredSongs)}
                   onContextMenu={(e) => handleContextMenu(e, song._id)}
                 >
-                  <span className="row-num">{currentSong?._id === song._id && isPlaying ? '🎵' : index + 1}</span>
+                  <span>{index + 1}</span>
                   <div className="row-title">
                     <span className="title-text">{song.title}</span>
                     <span className="artist-text">{song.artist}</span>
                   </div>
-                  <span className="row-time">3:00</span>
+                  <span>3:45</span>
                 </div>
               ))}
             </div>
           </>
         )}
-      </main>
+      </div>
 
       {/* PLAYER BAR */}
-      <footer className="player-bar">
+      <div className="player-bar">
         <div className="player-left">
-          <div className="player-art">{currentCover ? <img src={currentCover} alt="" /> : <div className="placeholder">🎵</div>}</div>
-          <div className="player-info">
-            <h4>{currentSong?.title || "No Song"}</h4>
-            <p>{currentSong?.artist || ""}</p>
+          <div className="player-art">{currentCover && <img src={currentCover} />}</div>
+          <div>
+             <div style={{color:'#fff', fontWeight:'bold', fontSize:'14px'}}>{currentSong?.title}</div>
+             <div style={{color:'#b3b3b3', fontSize:'12px'}}>{currentSong?.artist}</div>
           </div>
         </div>
 
         <div className="player-center">
-          <div className="player-controls">
-            <button onClick={toggleShuffle} style={{color: isShuffle ? '#1db954' : '#b3b3b3'}}>🔀</button>
-            <button onClick={prevTrack}>⏮</button>
-            <button className="play-circle" onClick={togglePlay}>{isPlaying ? '⏸' : '▶'}</button>
-            <button onClick={nextTrack}>⏭</button>
-            
-            {/* LOOP BUTTON (Changes icon based on mode) */}
-            <button onClick={toggleLoop} style={{color: loopMode > 0 ? '#1db954' : '#b3b3b3', position:'relative'}}>
-              🔁 {loopMode === 1 && <span className="loop-one-badge">1</span>}
-            </button>
-          </div>
-          <div className="progress-container">
-            <span>{formatTime(progress)}</span>
-            <input type="range" min="0" max={duration || 0} value={progress} onChange={(e) => seek(e.target.value)} />
-            <span>{formatTime(duration)}</span>
-          </div>
+           <div className="player-controls">
+              <button onClick={toggleShuffle} style={{color: isShuffle ? '#1db954' : '#b3b3b3'}}>🔀</button>
+              <button onClick={prevTrack}>⏮</button>
+              <button className="play-circle" onClick={togglePlay}>{isPlaying ? '⏸' : '▶'}</button>
+              <button onClick={nextTrack}>⏭</button>
+              <button onClick={toggleLoop} style={{color: loopMode > 0 ? '#1db954' : '#b3b3b3'}}>
+                {loopMode === 2 ? '🔁' : loopMode === 1 ? '🔂' : '🔁'}
+              </button>
+           </div>
+           <div className="progress-container">
+              <span>{formatTime(progress)}</span>
+              <input type="range" min="0" max={duration || 0} value={progress} onChange={(e) => seek(e.target.value)} />
+              <span>{formatTime(duration)}</span>
+           </div>
         </div>
 
         <div className="player-right">
-          {/* LYRICS BUTTON */}
-          <button onClick={() => setShowLyrics(!showLyrics)} style={{color: showLyrics ? '#1db954' : '#b3b3b3'}}>🎤</button>
-          
-          {/* QUEUE BUTTON */}
-          <button onClick={() => setShowQueue(!showQueue)} style={{color: showQueue ? '#1db954' : '#b3b3b3'}}>☰</button>
-          
-          <div className="volume-box">
-             <span>🔊</span>
-             <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => adjustVolume(e.target.value)} />
-          </div>
+           <button onClick={() => setShowLyrics(!showLyrics)} style={{color: showLyrics ? '#1db954' : '#b3b3b3', background:'none', border:'none', fontSize:20, cursor:'pointer'}}>🎤</button>
+           <button onClick={() => setShowQueue(!showQueue)} style={{color: showQueue ? '#1db954' : '#b3b3b3', background:'none', border:'none', fontSize:20, cursor:'pointer'}}>☰</button>
+           <span>🔊</span>
+           <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => adjustVolume(e.target.value)} style={{width:100}} />
         </div>
-      </footer>
+      </div>
 
+      {/* CONTEXT MENU */}
       {contextMenu.visible && (
-        <div className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x }} onClick={(e) => e.stopPropagation()}>
-          <div className="menu-header">Add to Playlist</div>
+        <div className="context-menu" style={{top: contextMenu.y, left: contextMenu.x}}>
           {playlists.map(pl => (
-            <div key={pl._id} className="menu-item" onClick={() => addToPlaylist(pl._id)}>{pl.name}</div>
+            <div key={pl._id} className="menu-item" onClick={() => addToPlaylist(pl._id)}>
+              Add to {pl.name}
+            </div>
           ))}
         </div>
       )}
@@ -252,3 +227,5 @@ function App() {
 }
 
 export default App;
+
+//
