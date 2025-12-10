@@ -23,18 +23,23 @@ import CloseIcon from '@mui/icons-material/Close';
 
 const API_URL = 'https://my-music-api-p380.onrender.com'; 
 
-// HELPER: Simple English detector
-// Checks if the text contains common English stop words
-const isLikelyEnglish = (text) => {
+// HELPER: Latin Script Detector
+// Returns true if the text is mostly A-Z characters (English/Romanized)
+// Returns false if it detects other scripts (Hindi, Gurmukhi, Japanese, etc.)
+const isReadable = (text) => {
   if (!text) return false;
-  const englishWords = ['the', 'and', 'you', 'that', 'was', 'for', 'are', 'with', 'his', 'they', 'this'];
-  const lower = text.toLowerCase();
-  // If we find at least 2 common words, assume it's English/Romanized enough to read
-  let count = 0;
-  for (let word of englishWords) {
-    if (lower.includes(" " + word + " ")) count++;
-  }
-  return count >= 2;
+  
+  // 1. Count Latin characters (a-z, A-Z)
+  const latinCount = (text.match(/[a-zA-Z]/g) || []).length;
+  
+  // 2. Count total characters (excluding spaces/numbers)
+  const totalCount = text.replace(/[^a-zA-Z\u00C0-\u024F\u1E00-\u1EFF]/g, "").length; // Includes accents
+
+  // Safety check to avoid divide by zero
+  if (totalCount === 0) return false;
+
+  // 3. If > 50% of the meaningful characters are Latin, it's readable
+  return (latinCount / text.length) > 0.3; 
 };
 
 
@@ -87,14 +92,15 @@ function App() {
   };
   useEffect(() => { loadData(); }, []);
 
-// --- NEW "SMART SEARCH" LYRICS ENGINE ---
+// --- NEW "READABLE SCRIPT" LYRICS ENGINE ---
   useEffect(() => {
     if (!currentSong) return;
     
     setSyncedLyrics([]);
-    setPlainLyrics("Searching for lyrics...");
+    setPlainLyrics("Searching...");
     setActiveLyricIndex(-1);
 
+    // Clean title for better search results
     const cleanTitle = currentSong.title.replace(/\(.*\)/g, "").trim();
     const query = `${cleanTitle} ${currentSong.artist}`;
 
@@ -102,37 +108,39 @@ function App() {
       .then(res => res.json())
       .then(data => {
         if (data && data.length > 0) {
-          // --- THE CHANGE IS HERE ---
-          // 1. Try to find an entry that is both SYNCED and ENGLISH
-          let bestMatch = data.find(item => item.syncedLyrics && isLikelyEnglish(item.syncedLyrics));
+          // STRATEGY: Find the best version that we can actually read (Latin script)
           
-          // 2. If no English synced, try ANY synced lyrics
+          // 1. Priority: Readable + Synced
+          let bestMatch = data.find(item => item.syncedLyrics && isReadable(item.syncedLyrics));
+
+          // 2. Secondary: Readable + Plain Text
           if (!bestMatch) {
-             bestMatch = data.find(item => item.syncedLyrics);
+             bestMatch = data.find(item => item.plainLyrics && isReadable(item.plainLyrics));
           }
 
-          // 3. If still nothing, fall back to the first result (plain or synced)
+          // 3. Fallback: If absolutely no readable versions exist, use the first result
           if (!bestMatch) {
              bestMatch = data[0];
           }
 
-          // --- RENDER LOGIC ---
-          if (bestMatch.syncedLyrics) {
+          // --- RENDER ---
+          if (bestMatch.syncedLyrics && isReadable(bestMatch.syncedLyrics)) {
             setSyncedLyrics(parseLRC(bestMatch.syncedLyrics));
             setPlainLyrics("");
           } else if (bestMatch.plainLyrics) {
             setSyncedLyrics([]);
             setPlainLyrics(bestMatch.plainLyrics);
           } else {
-            setPlainLyrics("Instrumental or no lyrics found.");
+            setSyncedLyrics([]);
+            setPlainLyrics("Lyrics format not supported.");
           }
         } else {
-          setPlainLyrics("Lyrics not found in database.");
+          setPlainLyrics("Lyrics not found.");
         }
       })
       .catch(err => {
         console.error(err);
-        setPlainLyrics("Could not load lyrics.");
+        setPlainLyrics("Network error loading lyrics.");
       });
   }, [currentSong]);
 
