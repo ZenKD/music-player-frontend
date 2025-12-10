@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import UploadForm from './UploadForm'; // <--- IMPORT THIS
+
 import './App.css';
 
 function App() {
@@ -45,9 +45,6 @@ function App() {
       <header>
         <h1>🎵 My Music Server</h1>
       </header>
-
-      {/* Add the Upload Form Here */}
-      <UploadForm onUploadSuccess={fetchSongs} />
 
       <main>
         {/* Song List */}
