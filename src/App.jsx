@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import UploadForm from './UploadForm'; // <--- IMPORT THIS
 import './App.css';
 
 function App() {
@@ -20,6 +21,18 @@ function App() {
     // The audio element will automatically load the new src because of the useEffect below
   };
 
+  // Move fetch logic to a function so we can reuse it
+  const fetchSongs = () => {
+    fetch('https://my-music-api.onrender.com/songs')
+      .then(res => res.json())
+      .then(data => setSongs(data))
+      .catch(err => console.error(err));
+  };
+
+  useEffect(() => {
+    fetchSongs();
+  }, []);
+
   // 3. Auto-play when the current song changes
   useEffect(() => {
     if (currentSong && audioRef.current) {
@@ -32,6 +45,9 @@ function App() {
       <header>
         <h1>🎵 My Music Server</h1>
       </header>
+
+      {/* Add the Upload Form Here */}
+      <UploadForm onUploadSuccess={fetchSongs} />
 
       <main>
         {/* Song List */}
