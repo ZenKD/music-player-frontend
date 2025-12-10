@@ -1,30 +1,47 @@
 import { useState, useEffect } from 'react';
-import { useAudioPlayer } from './useAudio'; // Import our new logic
+import { useAudioPlayer } from './useAudio';
 import * as jsmediatags from 'jsmediatags';
 import './App.css';
 
 const API_URL = 'https://my-music-api-p380.onrender.com'; // CHECK YOUR URL
 
 function App() {
-  const [view, setView] = useState('library'); // 'library' or 'playlists'
+  const [view, setView] = useState('library');
   const [songs, setSongs] = useState([]);
   const [playlists, setPlaylists] = useState([]);
   const [selectedPlaylist, setSelectedPlaylist] = useState(null);
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [currentCover, setCurrentCover] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
   
-  // The Player Logic
   const { 
     currentSong, isPlaying, playTrack, togglePlay, nextTrack, prevTrack, toggleShuffle, isShuffle 
   } = useAudioPlayer();
 
-  // Load Initial Data
-  useEffect(() => {
+  // Load Data
+  const loadData = () => {
     fetch(`${API_URL}/songs`).then(res => res.json()).then(setSongs);
     fetch(`${API_URL}/playlists`).then(res => res.json()).then(setPlaylists);
-  }, []);
+  };
 
-  // Extract Art (Same as before)
+  useEffect(() => { loadData(); }, []);
+
+  // --- THE SYNC BUTTON FUNCTION ---
+  const handleSync = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await fetch(`${API_URL}/sync`, { method: 'POST' });
+      const data = await res.json();
+      alert(data.message);
+      loadData(); // Refresh list immediately
+    } catch (err) {
+      alert("Sync failed");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Album Art Extraction
   useEffect(() => {
     if(!currentSong) return;
     jsmediatags.read(currentSong.songUrl, {
@@ -39,66 +56,57 @@ function App() {
     });
   }, [currentSong]);
 
-  // Playlist Functions
+  // Playlist Logic
   const createPlaylist = async () => {
     if (!newPlaylistName) return;
-    // For simplicity, creating a playlist starts empty or with current song
-    // Here we just create an empty file first
     await fetch(`${API_URL}/playlists`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ name: newPlaylistName, songs: [] })
+      body: JSON.stringify({ name: newPlaylistName })
     });
     setNewPlaylistName("");
-    // Refresh list
-    fetch(`${API_URL}/playlists`).then(res => res.json()).then(setPlaylists);
+    loadData();
   };
 
-  const addToPlaylist = async (song, playlistName) => {
-    // 1. Get current playlist
-    const res = await fetch(`${API_URL}/playlists/${playlistName}`);
-    const currentSongs = await res.json();
-    
-    // 2. Add new song
-    const updatedSongs = [...currentSongs, song];
-    
-    // 3. Save back
-    await fetch(`${API_URL}/playlists`, {
+  const addToPlaylist = async (songId, playlistId) => {
+    await fetch(`${API_URL}/playlists/${playlistId}/add`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ name: playlistName, songs: updatedSongs })
+      body: JSON.stringify({ songId })
     });
-    alert(`Added to ${playlistName}`);
+    alert("Added!");
   };
 
-  const openPlaylist = async (name) => {
-    const res = await fetch(`${API_URL}/playlists/${name}`);
-    const data = await res.json();
-    setSongs(data); // Temporarily replace the "Library" view with Playlist songs
+  const openPlaylist = (playlist) => {
+    setSongs(playlist.songs); // Only show playlist songs
     setView('library');
-    setSelectedPlaylist(name);
+    setSelectedPlaylist(playlist.name);
   };
 
   return (
     <div className="app-container">
       <header>
-        <h1>🎵 My Music Cloud</h1>
+        <h1>🎵 My Music DB</h1>
         <div className="nav-buttons">
-          <button onClick={() => { setView('library'); setSelectedPlaylist(null); fetch(`${API_URL}/songs`).then(res => res.json()).then(setSongs); }}>All Songs</button>
+          <button onClick={() => { setView('library'); setSelectedPlaylist(null); loadData(); }}>All Songs</button>
           <button onClick={() => setView('playlists')}>Playlists</button>
+          {/* SYNC BUTTON */}
+          <button onClick={handleSync} style={{background: '#444'}}>
+            {isSyncing ? "Syncing..." : "🔄 Sync Library"}
+          </button>
         </div>
       </header>
 
       {view === 'playlists' && (
         <div className="playlist-manager">
           <div className="create-box">
-            <input value={newPlaylistName} onChange={e => setNewPlaylistName(e.target.value)} placeholder="New Playlist Name" />
+            <input value={newPlaylistName} onChange={e => setNewPlaylistName(e.target.value)} placeholder="Playlist Name" />
             <button onClick={createPlaylist}>Create</button>
           </div>
           <ul>
             {playlists.map(pl => (
-              <li key={pl.name} onClick={() => openPlaylist(pl.name)}>
-                📂 {pl.name}
+              <li key={pl._id} onClick={() => openPlaylist(pl)}>
+                📂 {pl.name} <span style={{fontSize:'0.8em', color:'#888'}}>({pl.songs.length} songs)</span>
               </li>
             ))}
           </ul>
@@ -115,9 +123,13 @@ function App() {
                   <span className="song-title">{song.title}</span>
                   <span className="song-artist">{song.artist}</span>
                 </div>
-                {/* Quick "Add to Playlist" Button (Demo: Adds to first playlist found) */}
+                {/* Add to Playlist Dropdown (Simple version: click to add to first playlist) */}
                 {playlists.length > 0 && (
-                  <button className="add-btn" onClick={(e) => { e.stopPropagation(); addToPlaylist(song, playlists[0].name); }}>
+                  <button className="add-btn" onClick={(e) => { 
+                    e.stopPropagation(); 
+                    // For now, simple "Add to first playlist" - you can make a dropdown later
+                    addToPlaylist(song._id, playlists[0]._id); 
+                  }}>
                     + {playlists[0].name}
                   </button>
                 )}
@@ -127,19 +139,16 @@ function App() {
         </main>
       )}
 
-      {/* NEW PLAYER BAR WITH CONTROLS */}
       <div className="player-bar">
         <div className="album-art">
           {currentCover ? <img src={currentCover} /> : <div className="placeholder-art">🎵</div>}
         </div>
-
         <div className="controls">
           <button onClick={prevTrack}>⏮</button>
           <button onClick={togglePlay}>{isPlaying ? "⏸" : "▶"}</button>
           <button onClick={nextTrack}>⏭</button>
           <button onClick={toggleShuffle} style={{color: isShuffle ? '#1db954' : 'white'}}>🔀</button>
         </div>
-
         <div className="now-playing-info">
           {currentSong ? (
             <><strong>{currentSong.title}</strong><span>{currentSong.artist}</span></>
