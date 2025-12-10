@@ -9,7 +9,7 @@ function App() {
 
   // Fetch songs from Render
   useEffect(() => {
-    fetch('https://my-music-api.onrender.com/songs') 
+    fetch('https://my-music-api-p380.onrender.com/songs') 
       .then(res => res.json())
       .then(data => {
         console.log("Songs loaded:", data);
