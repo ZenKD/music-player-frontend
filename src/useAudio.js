@@ -101,3 +101,9 @@ export const useAudioPlayer = () => {
     isShuffle
   };
 };
+
+export const toggleShuffle = () => {
+  setIsShuffle(!isShuffle);
+};
+
+//
