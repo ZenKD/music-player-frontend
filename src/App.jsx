@@ -23,7 +23,21 @@ import CloseIcon from '@mui/icons-material/Close';
 
 const API_URL = 'https://my-music-api-p380.onrender.com'; 
 
-// --- HELPER: PARSE LRC LYRICS ---
+// HELPER: Simple English detector
+// Checks if the text contains common English stop words
+const isLikelyEnglish = (text) => {
+  if (!text) return false;
+  const englishWords = ['the', 'and', 'you', 'that', 'was', 'for', 'are', 'with', 'his', 'they', 'this'];
+  const lower = text.toLowerCase();
+  // If we find at least 2 common words, assume it's English/Romanized enough to read
+  let count = 0;
+  for (let word of englishWords) {
+    if (lower.includes(" " + word + " ")) count++;
+  }
+  return count >= 2;
+};
+
+
 // --- HELPER: PARSE LRC LYRICS ---
 const parseLRC = (lrcText) => {
   if (!lrcText) return [];
@@ -73,34 +87,40 @@ function App() {
   };
   useEffect(() => { loadData(); }, []);
 
-  // --- FETCH & PARSE LYRICS ---
-// --- NEW BETTER LYRICS ENGINE (Lrclib.net) ---
+// --- NEW "SMART SEARCH" LYRICS ENGINE ---
   useEffect(() => {
     if (!currentSong) return;
     
-    // Reset states
     setSyncedLyrics([]);
     setPlainLyrics("Searching for lyrics...");
     setActiveLyricIndex(-1);
 
-    // Clean up search query (remove special chars for better results)
     const cleanTitle = currentSong.title.replace(/\(.*\)/g, "").trim();
     const query = `${cleanTitle} ${currentSong.artist}`;
 
-    // Use LRCLIB.NET (Much better database with Synced Lyrics)
     fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(query)}`)
       .then(res => res.json())
       .then(data => {
-        // The API returns a list. We take the first result.
         if (data && data.length > 0) {
-          const bestMatch = data[0]; // Take the top result
+          // --- THE CHANGE IS HERE ---
+          // 1. Try to find an entry that is both SYNCED and ENGLISH
+          let bestMatch = data.find(item => item.syncedLyrics && isLikelyEnglish(item.syncedLyrics));
+          
+          // 2. If no English synced, try ANY synced lyrics
+          if (!bestMatch) {
+             bestMatch = data.find(item => item.syncedLyrics);
+          }
 
+          // 3. If still nothing, fall back to the first result (plain or synced)
+          if (!bestMatch) {
+             bestMatch = data[0];
+          }
+
+          // --- RENDER LOGIC ---
           if (bestMatch.syncedLyrics) {
-            // Found Time-Synced Lyrics!
             setSyncedLyrics(parseLRC(bestMatch.syncedLyrics));
             setPlainLyrics("");
           } else if (bestMatch.plainLyrics) {
-            // Found Text-Only Lyrics
             setSyncedLyrics([]);
             setPlainLyrics(bestMatch.plainLyrics);
           } else {
