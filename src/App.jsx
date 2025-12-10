@@ -3,6 +3,23 @@ import { useAudioPlayer } from './useAudio';
 import * as jsmediatags from 'jsmediatags';
 import './App.css';
 
+// --- NEW ICONS ---
+import ShuffleIcon from '@mui/icons-material/Shuffle';
+import ShuffleOnIcon from '@mui/icons-material/ShuffleOn';
+import PlayCircleIcon from '@mui/icons-material/PlayCircle';
+import PauseCircleIcon from '@mui/icons-material/PauseCircle';
+import VolumeUpIcon from '@mui/icons-material/VolumeUp';
+import VolumeOffIcon from '@mui/icons-material/VolumeOff';
+import RepeatIcon from '@mui/icons-material/Repeat';
+import RepeatOnIcon from '@mui/icons-material/RepeatOn';
+import LyricsIcon from '@mui/icons-material/Lyrics';
+import QueueMusicIcon from '@mui/icons-material/QueueMusic';
+import SkipPreviousIcon from '@mui/icons-material/SkipPrevious';
+import SkipNextIcon from '@mui/icons-material/SkipNext';
+import HomeIcon from '@mui/icons-material/Home';
+import SyncIcon from '@mui/icons-material/Sync';
+import AddIcon from '@mui/icons-material/Add';
+
 const API_URL = 'https://my-music-api-p380.onrender.com'; 
 
 function App() {
@@ -24,14 +41,12 @@ function App() {
     playTrack, togglePlay, nextTrack, prevTrack, adjustVolume, seek, toggleShuffle, toggleLoop
   } = useAudioPlayer();
 
-  // Load Data
   const loadData = () => {
     fetch(`${API_URL}/songs`).then(res => res.json()).then(setSongs);
     fetch(`${API_URL}/playlists`).then(res => res.json()).then(setPlaylists);
   };
   useEffect(() => { loadData(); }, []);
 
-  // Fetch Lyrics
   useEffect(() => {
     if (!currentSong || !showLyrics) return;
     setLyricsText("Searching...");
@@ -41,7 +56,6 @@ function App() {
       .catch(() => setLyricsText("Lyrics not available."));
   }, [currentSong, showLyrics]);
 
-  // Extract Art
   useEffect(() => {
     if(!currentSong) return;
     jsmediatags.read(currentSong.songUrl, {
@@ -56,7 +70,6 @@ function App() {
     });
   }, [currentSong]);
 
-  // Context Menu Logic
   const handleContextMenu = (e, songId) => {
     e.preventDefault();
     setContextMenu({ visible: true, x: e.clientX, y: e.clientY, songId });
@@ -100,7 +113,6 @@ function App() {
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  // Filter
   const songsDisplay = activePlaylist ? activePlaylist.songs : songs;
   const filteredSongs = songsDisplay.filter(s => s.title.toLowerCase().includes(searchTerm.toLowerCase()));
 
@@ -110,11 +122,18 @@ function App() {
       <div className="sidebar">
         <div className="logo">🎵 Music</div>
         <div className="nav-links">
-          <button onClick={() => { setActivePlaylist(null); setShowLyrics(false); setShowQueue(false); }}>🏠 Home</button>
-          <button onClick={handleSync}>🔄 Sync</button>
+          <button onClick={() => { setActivePlaylist(null); setShowLyrics(false); setShowQueue(false); }}>
+            <HomeIcon style={{fontSize: 20, verticalAlign:'middle', marginRight: 10}}/> Home
+          </button>
+          <button onClick={handleSync}>
+            <SyncIcon style={{fontSize: 20, verticalAlign:'middle', marginRight: 10}}/> Sync
+          </button>
         </div>
         <div className="playlists-section">
-          <div style={{marginBottom: '10px', color:'#b3b3b3', fontSize:'12px', fontWeight:'bold'}}>PLAYLISTS <button onClick={createPlaylist} style={{background:'none', border:'none', color:'#fff', cursor:'pointer'}}>+</button></div>
+          <div style={{marginBottom: '10px', color:'#b3b3b3', fontSize:'12px', fontWeight:'bold', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+            PLAYLISTS 
+            <AddIcon onClick={createPlaylist} style={{cursor:'pointer', fontSize: 18}}/>
+          </div>
           <div className="playlist-list">
             {playlists.map(pl => (
               <div key={pl._id} className={activePlaylist?._id === pl._id ? 'active' : ''} onClick={() => setActivePlaylist(pl)}>
@@ -189,14 +208,27 @@ function App() {
 
         <div className="player-center">
            <div className="player-controls">
-              <button onClick={toggleShuffle} style={{color: isShuffle ? '#1db954' : '#b3b3b3'}}>🔀</button>
-              <button onClick={prevTrack}>⏮</button>
-              <button className="play-circle" onClick={togglePlay}>{isPlaying ? '⏸' : '▶'}</button>
-              <button onClick={nextTrack}>⏭</button>
-              <button onClick={toggleLoop} style={{color: loopMode > 0 ? '#1db954' : '#b3b3b3'}}>
-                {loopMode === 2 ? '🔁' : loopMode === 1 ? '🔂' : '🔁'}
+              {/* SHUFFLE */}
+              <button onClick={toggleShuffle} style={{color: isShuffle ? '#1db954' : '#b3b3b3'}}>
+                {isShuffle ? <ShuffleOnIcon/> : <ShuffleIcon/>}
+              </button>
+
+              <button onClick={prevTrack}><SkipPreviousIcon style={{fontSize: 28}}/></button>
+              
+              {/* PLAY / PAUSE */}
+              <button className="play-circle" onClick={togglePlay} style={{background:'none', color:'#fff'}}>
+                {isPlaying ? <PauseCircleIcon style={{fontSize: 40}}/> : <PlayCircleIcon style={{fontSize: 40}}/>}
+              </button>
+              
+              <button onClick={nextTrack}><SkipNextIcon style={{fontSize: 28}}/></button>
+              
+              {/* LOOP */}
+              <button onClick={toggleLoop} style={{color: loopMode > 0 ? '#1db954' : '#b3b3b3', position:'relative'}}>
+                {loopMode > 0 ? <RepeatOnIcon/> : <RepeatIcon/>}
+                {loopMode === 1 && <span className="loop-one-badge">1</span>}
               </button>
            </div>
+           
            <div className="progress-container">
               <span>{formatTime(progress)}</span>
               <input type="range" min="0" max={duration || 0} value={progress} onChange={(e) => seek(e.target.value)} />
@@ -205,14 +237,24 @@ function App() {
         </div>
 
         <div className="player-right">
-           <button onClick={() => setShowLyrics(!showLyrics)} style={{color: showLyrics ? '#1db954' : '#b3b3b3', background:'none', border:'none', fontSize:20, cursor:'pointer'}}>🎤</button>
-           <button onClick={() => setShowQueue(!showQueue)} style={{color: showQueue ? '#1db954' : '#b3b3b3', background:'none', border:'none', fontSize:20, cursor:'pointer'}}>☰</button>
-           <span>🔊</span>
-           <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => adjustVolume(e.target.value)} style={{width:100}} />
+           {/* LYRICS */}
+           <button onClick={() => setShowLyrics(!showLyrics)} style={{color: showLyrics ? '#1db954' : '#b3b3b3'}}>
+             <LyricsIcon/>
+           </button>
+           
+           {/* QUEUE */}
+           <button onClick={() => setShowQueue(!showQueue)} style={{color: showQueue ? '#1db954' : '#b3b3b3'}}>
+             <QueueMusicIcon/>
+           </button>
+           
+           {/* VOLUME */}
+           <div style={{display:'flex', alignItems:'center', gap: 5}}>
+             {volume == 0 ? <VolumeOffIcon style={{fontSize:20}}/> : <VolumeUpIcon style={{fontSize:20}}/>}
+             <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => adjustVolume(e.target.value)} style={{width:80}} />
+           </div>
         </div>
       </div>
 
-      {/* CONTEXT MENU */}
       {contextMenu.visible && (
         <div className="context-menu" style={{top: contextMenu.y, left: contextMenu.x}}>
           {playlists.map(pl => (
