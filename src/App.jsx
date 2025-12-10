@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAudioPlayer } from './useAudio';
 import * as jsmediatags from 'jsmediatags';
 import './App.css';
 
-// --- NEW ICONS ---
+// ICONS
 import ShuffleIcon from '@mui/icons-material/Shuffle';
 import ShuffleOnIcon from '@mui/icons-material/ShuffleOn';
 import PlayCircleIcon from '@mui/icons-material/PlayCircle';
@@ -19,11 +19,36 @@ import SkipNextIcon from '@mui/icons-material/SkipNext';
 import HomeIcon from '@mui/icons-material/Home';
 import SyncIcon from '@mui/icons-material/Sync';
 import AddIcon from '@mui/icons-material/Add';
+import CloseIcon from '@mui/icons-material/Close';
 
 const API_URL = 'https://my-music-api-p380.onrender.com'; 
 
+// --- HELPER: PARSE LRC LYRICS ---
+const parseLRC = (lrcText) => {
+  if (!lrcText) return [];
+  const lines = lrcText.split('\n');
+  const regex = /\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/;
+  const data = [];
+
+  lines.forEach(line => {
+    const match = line.match(regex);
+    if (match) {
+      const min = parseInt(match[1]);
+      const sec = parseInt(match[2]);
+      const ms = parseFloat("0." + match[3]);
+      const time = min * 60 + sec + ms;
+      const text = match[4].trim();
+      if (text) data.push({ time, text });
+    } else {
+      // Fallback for non-synced lines (treat as just text)
+      const text = line.trim();
+      if (text) data.push({ time: -1, text }); 
+    }
+  });
+  return data;
+};
+
 function App() {
-  const [view, setView] = useState('library'); 
   const [songs, setSongs] = useState([]);
   const [playlists, setPlaylists] = useState([]);
   const [activePlaylist, setActivePlaylist] = useState(null);
@@ -32,30 +57,78 @@ function App() {
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, songId: null });
 
   // UI STATES
-  const [showQueue, setShowQueue] = useState(false);
-  const [showLyrics, setShowLyrics] = useState(false);
-  const [lyricsText, setLyricsText] = useState("Loading...");
+  const [rightPanel, setRightPanel] = useState(null); // 'lyrics', 'queue', or null
+  const [syncedLyrics, setSyncedLyrics] = useState([]);
+  const [plainLyrics, setPlainLyrics] = useState(""); 
+  const [activeLyricIndex, setActiveLyricIndex] = useState(-1);
 
   const { 
     currentSong, queue, isPlaying, progress, duration, volume, loopMode, isShuffle,
-    playTrack, togglePlay, nextTrack, prevTrack, adjustVolume, seek, toggleShuffle, toggleLoop
+    playTrack, togglePlay, nextTrack, prevTrack, adjustVolume, seek, toggleShuffle, toggleLoop, audioRef
   } = useAudioPlayer();
 
+  // Load Data
   const loadData = () => {
     fetch(`${API_URL}/songs`).then(res => res.json()).then(setSongs);
     fetch(`${API_URL}/playlists`).then(res => res.json()).then(setPlaylists);
   };
   useEffect(() => { loadData(); }, []);
 
+  // --- FETCH & PARSE LYRICS ---
   useEffect(() => {
-    if (!currentSong || !showLyrics) return;
-    setLyricsText("Searching...");
+    if (!currentSong) return;
+    setSyncedLyrics([]);
+    setPlainLyrics("Loading lyrics...");
+    setActiveLyricIndex(-1);
+
+    // Using a free API (Note: This usually returns plain text, not LRC. 
+    // If you have a source for LRC files, swap this URL)
     fetch(`https://api.lyrics.ovh/v1/${currentSong.artist}/${currentSong.title}`)
       .then(res => res.json())
-      .then(data => setLyricsText(data.lyrics || "Lyrics not found."))
-      .catch(() => setLyricsText("Lyrics not available."));
-  }, [currentSong, showLyrics]);
+      .then(data => {
+        const rawText = data.lyrics || "";
+        
+        // Try to parse as LRC
+        const parsed = parseLRC(rawText);
+        
+        // If we found timestamps, use synced mode
+        if (parsed.some(line => line.time > -1)) {
+           setSyncedLyrics(parsed);
+           setPlainLyrics(""); 
+        } else {
+           // Fallback to plain text
+           setSyncedLyrics([]);
+           setPlainLyrics(rawText || "Lyrics not found.");
+        }
+      })
+      .catch(() => setPlainLyrics("Lyrics not available."));
+  }, [currentSong]);
 
+  // --- SYNC LOGIC (The "PyVidrome" Logic) ---
+  useEffect(() => {
+    if (syncedLyrics.length === 0) return;
+
+    // Find the last lyric line that has passed
+    let idx = -1;
+    for (let i = 0; i < syncedLyrics.length; i++) {
+      if (syncedLyrics[i].time <= progress) {
+        idx = i;
+      } else {
+        break;
+      }
+    }
+
+    if (idx !== activeLyricIndex) {
+      setActiveLyricIndex(idx);
+      // Auto-scroll logic
+      const element = document.getElementById(`lyric-${idx}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [progress, syncedLyrics]);
+
+  // Extract Art
   useEffect(() => {
     if(!currentSong) return;
     jsmediatags.read(currentSong.songUrl, {
@@ -70,6 +143,7 @@ function App() {
     });
   }, [currentSong]);
 
+  // Context Menu & Playlist Logic
   const handleContextMenu = (e, songId) => {
     e.preventDefault();
     setContextMenu({ visible: true, x: e.clientX, y: e.clientY, songId });
@@ -106,6 +180,19 @@ function App() {
     loadData();
   };
 
+  const toggleRightPanel = (panelName) => {
+    if (rightPanel === panelName) setRightPanel(null); // Close if already open
+    else setRightPanel(panelName);
+  };
+
+  // Logic to seek audio when clicking a lyric line
+  const handleLyricClick = (time) => {
+    if(time >= 0 && audioRef.current) {
+        audioRef.current.currentTime = time;
+        seek(time);
+    }
+  };
+
   const formatTime = (s) => {
     if (!s) return "0:00";
     const mins = Math.floor(s / 60);
@@ -118,11 +205,11 @@ function App() {
 
   return (
     <div className="app-layout">
-      {/* SIDEBAR */}
+      {/* SIDEBAR (Left) */}
       <div className="sidebar">
         <div className="logo">🎵 Music</div>
         <div className="nav-links">
-          <button onClick={() => { setActivePlaylist(null); setShowLyrics(false); setShowQueue(false); }}>
+          <button onClick={() => { setActivePlaylist(null); setRightPanel(null); }}>
             <HomeIcon style={{fontSize: 20, verticalAlign:'middle', marginRight: 10}}/> Home
           </button>
           <button onClick={handleSync}>
@@ -144,55 +231,90 @@ function App() {
         </div>
       </div>
 
-      {/* MAIN CONTENT */}
+      {/* MAIN CONTENT (Center) */}
       <div className="main-view">
-        {showLyrics ? (
-          <div className="lyrics-view">
-            <img src={currentCover} style={{width:200, height:200, borderRadius:10, marginBottom:20}} />
-            <div className="lyrics-text">{lyricsText}</div>
+        <div className="main-header">
+          <input type="text" placeholder="Search..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+        </div>
+        
+        <div className="playlist-banner">
+          <div className="banner-art">{activePlaylist ? '📂' : '❤️'}</div>
+          <div>
+            <p>PLAYLIST</p>
+            <h1>{activePlaylist ? activePlaylist.name : "Liked Songs"}</h1>
+            <p>{filteredSongs.length} songs</p>
           </div>
-        ) : showQueue ? (
-          <div className="queue-view">
-            <h1>Queue</h1>
-            {queue.map((s, i) => (
-              <div key={i} className="queue-item" onClick={() => playTrack(s)}>
-                {i+1}. {s.title} - {s.artist}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <>
-            <div className="main-header">
-              <input type="text" placeholder="Search..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-            </div>
-            
-            <div className="playlist-banner">
-              <div className="banner-art">{activePlaylist ? '📂' : '❤️'}</div>
-              <div>
-                <p>PLAYLIST</p>
-                <h1>{activePlaylist ? activePlaylist.name : "Liked Songs"}</h1>
-                <p>{filteredSongs.length} songs</p>
-              </div>
-            </div>
+        </div>
 
-            <div className="songs-table">
-              {filteredSongs.map((song, index) => (
-                <div 
-                  key={song._id} 
-                  className={`table-row ${currentSong?._id === song._id ? 'playing' : ''}`}
-                  onClick={() => playTrack(song, filteredSongs)}
-                  onContextMenu={(e) => handleContextMenu(e, song._id)}
-                >
-                  <span>{index + 1}</span>
-                  <div className="row-title">
-                    <span className="title-text">{song.title}</span>
-                    <span className="artist-text">{song.artist}</span>
-                  </div>
-                  <span>3:45</span>
-                </div>
-              ))}
+        <div className="songs-table">
+          {filteredSongs.map((song, index) => (
+            <div 
+              key={song._id} 
+              className={`table-row ${currentSong?._id === song._id ? 'playing' : ''}`}
+              onClick={() => playTrack(song, filteredSongs)}
+              onContextMenu={(e) => handleContextMenu(e, song._id)}
+            >
+              <span>{index + 1}</span>
+              <div className="row-title">
+                <span className="title-text">{song.title}</span>
+                <span className="artist-text">{song.artist}</span>
+              </div>
+              <span>3:45</span>
             </div>
-          </>
+          ))}
+        </div>
+      </div>
+
+      {/* RIGHT SIDEBAR (Lyrics / Queue) - Overlays on right side */}
+      <div className={`right-panel ${rightPanel ? 'open' : ''}`}>
+        <div className="panel-header">
+           <h2>{rightPanel === 'lyrics' ? 'Lyrics' : 'Queue'}</h2>
+           <CloseIcon onClick={() => setRightPanel(null)} style={{cursor:'pointer'}}/>
+        </div>
+
+        {rightPanel === 'lyrics' && (
+           <div className="panel-content lyrics-container">
+               {/* Cover Art in Lyrics View */}
+               <img src={currentCover} style={{width:150, height:150, borderRadius:8, marginBottom: 20}}/>
+               
+               {/* Synced Lyrics Logic */}
+               {syncedLyrics.length > 0 ? (
+                   syncedLyrics.map((line, i) => (
+                       <p 
+                         key={i} 
+                         id={`lyric-${i}`}
+                         className={`lyric-line ${i === activeLyricIndex ? 'active' : ''}`}
+                         onClick={() => handleLyricClick(line.time)}
+                       >
+                         {line.text}
+                       </p>
+                   ))
+               ) : (
+                   /* Plain Text Fallback */
+                   <p className="plain-lyrics">{plainLyrics}</p>
+               )}
+           </div>
+        )}
+
+        {rightPanel === 'queue' && (
+            <div className="panel-content queue-container">
+               <h3>Now Playing</h3>
+               {currentSong && (
+                   <div className="queue-item active-song">
+                      <div className="q-title">{currentSong.title}</div>
+                      <div className="q-artist">{currentSong.artist}</div>
+                   </div>
+               )}
+               <h3>Next Up</h3>
+               {queue.map((s, i) => (
+                   <div key={i} className="queue-item" onClick={() => playTrack(s)}>
+                       <span style={{color:'#888', width:20}}>{i+1}</span>
+                       <div style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                          <span style={{color:'white'}}>{s.title}</span> • <span style={{color:'#888', fontSize:12}}>{s.artist}</span>
+                       </div>
+                   </div>
+               ))}
+            </div>
         )}
       </div>
 
@@ -208,27 +330,19 @@ function App() {
 
         <div className="player-center">
            <div className="player-controls">
-              {/* SHUFFLE */}
               <button onClick={toggleShuffle} style={{color: isShuffle ? '#1db954' : '#b3b3b3'}}>
                 {isShuffle ? <ShuffleOnIcon/> : <ShuffleIcon/>}
               </button>
-
               <button onClick={prevTrack}><SkipPreviousIcon style={{fontSize: 28}}/></button>
-              
-              {/* PLAY / PAUSE */}
               <button className="play-circle" onClick={togglePlay} style={{background:'none', color:'#fff'}}>
                 {isPlaying ? <PauseCircleIcon style={{fontSize: 40}}/> : <PlayCircleIcon style={{fontSize: 40}}/>}
               </button>
-              
               <button onClick={nextTrack}><SkipNextIcon style={{fontSize: 28}}/></button>
-              
-              {/* LOOP */}
               <button onClick={toggleLoop} style={{color: loopMode > 0 ? '#1db954' : '#b3b3b3', position:'relative'}}>
                 {loopMode > 0 ? <RepeatOnIcon/> : <RepeatIcon/>}
                 {loopMode === 1 && <span className="loop-one-badge">1</span>}
               </button>
            </div>
-           
            <div className="progress-container">
               <span>{formatTime(progress)}</span>
               <input type="range" min="0" max={duration || 0} value={progress} onChange={(e) => seek(e.target.value)} />
@@ -237,17 +351,12 @@ function App() {
         </div>
 
         <div className="player-right">
-           {/* LYRICS */}
-           <button onClick={() => setShowLyrics(!showLyrics)} style={{color: showLyrics ? '#1db954' : '#b3b3b3'}}>
+           <button onClick={() => toggleRightPanel('lyrics')} style={{color: rightPanel === 'lyrics' ? '#1db954' : '#b3b3b3'}}>
              <LyricsIcon/>
            </button>
-           
-           {/* QUEUE */}
-           <button onClick={() => setShowQueue(!showQueue)} style={{color: showQueue ? '#1db954' : '#b3b3b3'}}>
+           <button onClick={() => toggleRightPanel('queue')} style={{color: rightPanel === 'queue' ? '#1db954' : '#b3b3b3'}}>
              <QueueMusicIcon/>
            </button>
-           
-           {/* VOLUME */}
            <div style={{display:'flex', alignItems:'center', gap: 5}}>
              {volume == 0 ? <VolumeOffIcon style={{fontSize:20}}/> : <VolumeUpIcon style={{fontSize:20}}/>}
              <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => adjustVolume(e.target.value)} style={{width:80}} />
@@ -270,4 +379,4 @@ function App() {
 
 export default App;
 
-//
+// ---
