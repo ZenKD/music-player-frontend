@@ -4,14 +4,41 @@ export const useAudioPlayer = () => {
   const audioRef = useRef(new Audio());
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentSong, setCurrentSong] = useState(null);
-  const [queue, setQueue] = useState([]); // The list of songs to play
+  const [queue, setQueue] = useState([]); 
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [isShuffle, setIsShuffle] = useState(false);
+  const [volume, setVolume] = useState(1); // 1 = 100%
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
 
-  // Play a specific song and set the queue context
+  // Initialize Volume & Events
+  useEffect(() => {
+    const audio = audioRef.current;
+    audio.volume = volume;
+
+    const updateProgress = () => setProgress(audio.currentTime);
+    const setAudioDuration = () => setDuration(audio.duration);
+    const handleEnd = () => nextTrack();
+
+    audio.addEventListener('timeupdate', updateProgress);
+    audio.addEventListener('loadedmetadata', setAudioDuration);
+    audio.addEventListener('ended', handleEnd);
+
+    return () => {
+      audio.removeEventListener('timeupdate', updateProgress);
+      audio.removeEventListener('loadedmetadata', setAudioDuration);
+      audio.removeEventListener('ended', handleEnd);
+    };
+  }, [volume, currentIndex, queue, isShuffle]); // Re-bind if queue changes
+
   const playTrack = (song, newQueue) => {
-    setQueue(newQueue);
-    const index = newQueue.findIndex(s => s._id === song._id);
+    // If we are clicking a new song, update queue
+    if (newQueue) setQueue(newQueue);
+    
+    // Find index in (possibly new) queue
+    const q = newQueue || queue;
+    const index = q.findIndex(s => s._id === song._id);
+    
     setCurrentIndex(index);
     setCurrentSong(song);
     audioRef.current.src = song.songUrl;
@@ -26,45 +53,50 @@ export const useAudioPlayer = () => {
   };
 
   const nextTrack = () => {
-    if (currentIndex < queue.length - 1) {
-      let nextIndex = currentIndex + 1;
-      if (isShuffle) nextIndex = Math.floor(Math.random() * queue.length);
-      
-      const nextSong = queue[nextIndex];
-      setCurrentIndex(nextIndex);
-      setCurrentSong(nextSong);
-      audioRef.current.src = nextSong.songUrl;
-      audioRef.current.play();
-      setIsPlaying(true);
-    }
+    if (queue.length === 0) return;
+    let nextIndex = currentIndex + 1;
+    
+    // Loop back to start if at end
+    if (nextIndex >= queue.length) nextIndex = 0;
+
+    if (isShuffle) nextIndex = Math.floor(Math.random() * queue.length);
+    
+    playTrack(queue[nextIndex]);
   };
 
   const prevTrack = () => {
     if (currentIndex > 0) {
-      const prevIndex = currentIndex - 1;
-      setCurrentIndex(prevIndex);
-      setCurrentSong(queue[prevIndex]);
-      audioRef.current.src = queue[prevIndex].songUrl;
-      audioRef.current.play();
-      setIsPlaying(true);
+      playTrack(queue[currentIndex - 1]);
+    } else {
+      // If at start, restart song
+      audioRef.current.currentTime = 0;
     }
   };
 
-  const toggleShuffle = () => setIsShuffle(!isShuffle);
+  const adjustVolume = (val) => {
+    const newVol = parseFloat(val);
+    setVolume(newVol);
+    audioRef.current.volume = newVol;
+  };
 
-  // Auto-play next song when current ends
-  useEffect(() => {
-    audioRef.current.onended = nextTrack;
-  }, [currentIndex, queue]);
+  const seek = (time) => {
+    audioRef.current.currentTime = time;
+    setProgress(time);
+  };
 
   return {
     audioRef,
     currentSong,
     isPlaying,
+    progress,
+    duration,
+    volume,
     playTrack,
     togglePlay,
     nextTrack,
     prevTrack,
+    adjustVolume,
+    seek,
     toggleShuffle,
     isShuffle
   };
