@@ -24,9 +24,11 @@ import CloseIcon from '@mui/icons-material/Close';
 const API_URL = 'https://my-music-api-p380.onrender.com'; 
 
 // --- HELPER: PARSE LRC LYRICS ---
+// --- HELPER: PARSE LRC LYRICS ---
 const parseLRC = (lrcText) => {
   if (!lrcText) return [];
   const lines = lrcText.split('\n');
+  // Regex to catch [00:12.34] or [00:12.345]
   const regex = /\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/;
   const data = [];
 
@@ -38,11 +40,8 @@ const parseLRC = (lrcText) => {
       const ms = parseFloat("0." + match[3]);
       const time = min * 60 + sec + ms;
       const text = match[4].trim();
+      // Only add lines that actually have text
       if (text) data.push({ time, text });
-    } else {
-      // Fallback for non-synced lines (treat as just text)
-      const text = line.trim();
-      if (text) data.push({ time: -1, text }); 
     }
   });
   return data;
@@ -75,33 +74,46 @@ function App() {
   useEffect(() => { loadData(); }, []);
 
   // --- FETCH & PARSE LYRICS ---
+// --- NEW BETTER LYRICS ENGINE (Lrclib.net) ---
   useEffect(() => {
     if (!currentSong) return;
+    
+    // Reset states
     setSyncedLyrics([]);
-    setPlainLyrics("Loading lyrics...");
+    setPlainLyrics("Searching for lyrics...");
     setActiveLyricIndex(-1);
 
-    // Using a free API (Note: This usually returns plain text, not LRC. 
-    // If you have a source for LRC files, swap this URL)
-    fetch(`https://api.lyrics.ovh/v1/${currentSong.artist}/${currentSong.title}`)
+    // Clean up search query (remove special chars for better results)
+    const cleanTitle = currentSong.title.replace(/\(.*\)/g, "").trim();
+    const query = `${cleanTitle} ${currentSong.artist}`;
+
+    // Use LRCLIB.NET (Much better database with Synced Lyrics)
+    fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(query)}`)
       .then(res => res.json())
       .then(data => {
-        const rawText = data.lyrics || "";
-        
-        // Try to parse as LRC
-        const parsed = parseLRC(rawText);
-        
-        // If we found timestamps, use synced mode
-        if (parsed.some(line => line.time > -1)) {
-           setSyncedLyrics(parsed);
-           setPlainLyrics(""); 
+        // The API returns a list. We take the first result.
+        if (data && data.length > 0) {
+          const bestMatch = data[0]; // Take the top result
+
+          if (bestMatch.syncedLyrics) {
+            // Found Time-Synced Lyrics!
+            setSyncedLyrics(parseLRC(bestMatch.syncedLyrics));
+            setPlainLyrics("");
+          } else if (bestMatch.plainLyrics) {
+            // Found Text-Only Lyrics
+            setSyncedLyrics([]);
+            setPlainLyrics(bestMatch.plainLyrics);
+          } else {
+            setPlainLyrics("Instrumental or no lyrics found.");
+          }
         } else {
-           // Fallback to plain text
-           setSyncedLyrics([]);
-           setPlainLyrics(rawText || "Lyrics not found.");
+          setPlainLyrics("Lyrics not found in database.");
         }
       })
-      .catch(() => setPlainLyrics("Lyrics not available."));
+      .catch(err => {
+        console.error(err);
+        setPlainLyrics("Could not load lyrics.");
+      });
   }, [currentSong]);
 
   // --- SYNC LOGIC (The "PyVidrome" Logic) ---
