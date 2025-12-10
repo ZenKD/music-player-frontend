@@ -7,18 +7,17 @@ function App() {
   const [searchTerm, setSearchTerm] = useState(""); 
   const audioRef = useRef(null);
 
-  // 1. Fetch Data
+  // Fetch songs from Render
   useEffect(() => {
     fetch('https://my-music-api.onrender.com/songs') 
       .then(res => res.json())
       .then(data => {
-        console.log("Songs loaded:", data.length); // Debug log
+        console.log("Songs loaded:", data);
         setSongs(data);
       })
-      .catch(err => console.error("Error fetching songs:", err));
+      .catch(err => console.error("Error:", err));
   }, []);
 
-  // 2. Play Logic
   const playSong = (song) => {
     setCurrentSong(song);
   };
@@ -29,72 +28,48 @@ function App() {
     }
   }, [currentSong]);
 
-  // 3. SAFE FILTER LOGIC (The Fix)
-  // We check if title/artist exists before running toLowerCase()
+  // Safe Filter Logic
   const filteredSongs = songs.filter(song => {
     const title = song.title ? song.title.toString().toLowerCase() : "";
     const artist = song.artist ? song.artist.toString().toLowerCase() : "";
     const search = searchTerm.toLowerCase();
-    
     return title.includes(search) || artist.includes(search);
   });
 
   return (
     <div className="app-container">
       <header>
-        <h1>🎵 My Music Server</h1>
-        
-        {/* Search Bar */}
+        <h1>🎵 My Music Cloud</h1>
         <input 
           type="text" 
-          placeholder="Search songs..." 
+          placeholder="Search..." 
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="search-input"
-          style={{
-            width: '100%',
-            padding: '12px',
-            marginTop: '10px',
-            borderRadius: '8px',
-            border: '1px solid #333',
-            background: '#333',
-            color: 'white',
-            fontSize: '16px',
-            outline: 'none'
-          }}
+          style={{ padding: '10px', width: '100%', borderRadius: '5px', border: 'none', marginTop: '10px' }}
         />
       </header>
 
       <main>
         <div className="song-list">
           <h2>Library ({filteredSongs.length})</h2>
-          
-          {songs.length === 0 && <p>Loading library...</p>}
+          {songs.length === 0 && <p style={{color: '#888'}}>Loading library from Cloudflare...</p>}
 
           <ul>
             {filteredSongs.map((song) => (
-              <li 
-                key={song._id} 
-                onClick={() => playSong(song)} 
-                className={currentSong?._id === song._id ? 'active' : ''}
-              >
-                <div className="song-info">
-                  <span className="song-title">{song.title}</span>
-                  <span className="song-artist">{song.artist}</span>
+              <li key={song._id} onClick={() => playSong(song)} className={currentSong?._id === song._id ? 'active' : ''}>
+                <div style={{display: 'flex', flexDirection: 'column'}}>
+                  <span className="song-title" style={{fontWeight: 'bold'}}>{song.title}</span>
+                  <span className="song-artist" style={{fontSize: '0.8em', color: '#ccc'}}>{song.artist}</span>
                 </div>
               </li>
             ))}
           </ul>
         </div>
 
-        {/* Player Bar */}
         <div className="player-bar">
           <div className="now-playing">
             {currentSong ? (
-              <>
-                <strong style={{ display: 'block' }}>{currentSong.title}</strong>
-                <span style={{ fontSize: '0.9em', color: '#b3b3b3' }}>{currentSong.artist}</span>
-              </>
+              <><strong>{currentSong.title}</strong><br/>{currentSong.artist}</>
             ) : (
               <span>Select a song</span>
             )}
