@@ -1,0 +1,60 @@
+/* Dark Mode Spotify-ish Style */
+:root {
+  --bg-color: #121212;
+  --card-color: #181818;
+  --text-primary: #ffffff;
+  --text-secondary: #b3b3b3;
+  --accent: #1db954;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  font-family: sans-serif;
+}
+
+.app-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+  padding-bottom: 100px; /* Space for player bar */
+}
+
+h1 { color: var(--accent); }
+
+ul { list-style: none; padding: 0; }
+
+li {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 15px;
+  background: var(--card-color);
+  margin-bottom: 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+li:hover { background: #282828; }
+li.active { color: var(--accent); border: 1px solid var(--accent); }
+
+.song-artist { color: var(--text-secondary); font-size: 0.9em; }
+
+/* Fixed Player Bar at Bottom */
+.player-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: #282828;
+  border-top: 1px solid #333;
+  padding: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+}
+
+.now-playing { display: flex; flex-direction: column; width: 200px; }
+audio { width: 100%; max-width: 500px; }
