@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useAudioPlayer } from './useAudioPlayer'; // Import our new logic
+import { useAudioPlayer } from './useAudio'; // Import our new logic
 import * as jsmediatags from 'jsmediatags';
 import './App.css';
 
