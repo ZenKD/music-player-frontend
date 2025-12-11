@@ -20,6 +20,7 @@ import HomeIcon from '@mui/icons-material/Home';
 import SyncIcon from '@mui/icons-material/Sync';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
+import DriveFolderUploadIcon from '@mui/icons-material/DriveFolderUpload';
 
 const API_URL = 'https://my-music-api-p380.onrender.com'; 
 
@@ -66,6 +67,39 @@ const parseLRC = (lrcText) => {
   return data;
 };
 
+
+const handleFolderUpload = async (event) => {
+  const files = event.target.files;
+  if (!files || files.length === 0) return;
+
+  setIsUploading(true);
+  const formData = new FormData();
+
+  // Use the folder name as the playlist name (webkitRelativePath gives "FolderName/Song.mp3")
+  const folderName = files[0].webkitRelativePath.split('/')[0];
+  formData.append('playlistName', folderName);
+
+  for (let i = 0; i < files.length; i++) {
+    formData.append('files', files[i]);
+  }
+
+  try {
+    const res = await fetch(`${API_URL}/upload-playlist`, {
+      method: 'POST',
+      body: formData, // Auto-sets Content-Type to multipart/form-data
+    });
+    const data = await res.json();
+    alert(data.message);
+    loadData(); // Refresh UI
+  } catch (error) {
+    console.error(error);
+    alert("Upload failed.");
+  } finally {
+    setIsUploading(false);
+  }
+};
+
+
 function App() {
   const [songs, setSongs] = useState([]);
   const [playlists, setPlaylists] = useState([]);
@@ -73,6 +107,7 @@ function App() {
   const [currentCover, setCurrentCover] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, songId: null });
+  const [isUploading, setIsUploading] = useState(false);
 
   // UI STATES
   const [rightPanel, setRightPanel] = useState(null); // 'lyrics', 'queue', or null
@@ -255,6 +290,21 @@ function App() {
           <button onClick={handleSync}>
             <SyncIcon style={{fontSize: 20, verticalAlign:'middle', marginRight: 10}}/> Sync
           </button>
+          {/* HIDDEN INPUT FOR FOLDER SELECTION */}
+          <input
+            type="file"
+            id="folderInput"
+            webkitdirectory="true"
+            directory="true"
+            multiple
+            style={{ display: 'none' }}
+            onChange={handleFolderUpload}
+          />
+
+          <button onClick={() => document.getElementById('folderInput').click()} disabled={isUploading}>
+            <DriveFolderUploadIcon style={{fontSize: 20, verticalAlign:'middle', marginRight: 10}}/> 
+            {isUploading ? "Uploading..." : "Upload Folder"}
+          </button>
         </div>
         <div className="playlists-section">
           <div style={{marginBottom: '10px', color:'#b3b3b3', fontSize:'12px', fontWeight:'bold', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
@@ -281,7 +331,7 @@ function App() {
           <div className="banner-art">{activePlaylist ? '📂' : '❤️'}</div>
           <div>
             <p>PLAYLIST</p>
-            <h1>{activePlaylist ? activePlaylist.name : "Liked Songs"}</h1>
+            <h1>{activePlaylist ? activePlaylist.name : "ALL SONGS"}</h1>
             <p>{filteredSongs.length} songs</p>
           </div>
         </div>
