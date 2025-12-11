@@ -25,30 +25,18 @@ import DriveFolderUploadIcon from '@mui/icons-material/DriveFolderUpload';
 const API_URL = 'https://my-music-api-p380.onrender.com'; 
 
 // HELPER: Latin Script Detector
-// Returns true if the text is mostly A-Z characters (English/Romanized)
-// Returns false if it detects other scripts (Hindi, Gurmukhi, Japanese, etc.)
 const isReadable = (text) => {
   if (!text) return false;
-  
-  // 1. Count Latin characters (a-z, A-Z)
   const latinCount = (text.match(/[a-zA-Z]/g) || []).length;
-  
-  // 2. Count total characters (excluding spaces/numbers)
-  const totalCount = text.replace(/[^a-zA-Z\u00C0-\u024F\u1E00-\u1EFF]/g, "").length; // Includes accents
-
-  // Safety check to avoid divide by zero
+  const totalCount = text.replace(/[^a-zA-Z\u00C0-\u024F\u1E00-\u1EFF]/g, "").length;
   if (totalCount === 0) return false;
-
-  // 3. If > 50% of the meaningful characters are Latin, it's readable
   return (latinCount / text.length) > 0.3; 
 };
 
-
-// --- HELPER: PARSE LRC LYRICS ---
+// HELPER: PARSE LRC LYRICS
 const parseLRC = (lrcText) => {
   if (!lrcText) return [];
   const lines = lrcText.split('\n');
-  // Regex to catch [00:12.34] or [00:12.345]
   const regex = /\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/;
   const data = [];
 
@@ -60,45 +48,11 @@ const parseLRC = (lrcText) => {
       const ms = parseFloat("0." + match[3]);
       const time = min * 60 + sec + ms;
       const text = match[4].trim();
-      // Only add lines that actually have text
       if (text) data.push({ time, text });
     }
   });
   return data;
 };
-
-
-const handleFolderUpload = async (event) => {
-  const files = event.target.files;
-  if (!files || files.length === 0) return;
-
-  setIsUploading(true);
-  const formData = new FormData();
-
-  // Use the folder name as the playlist name (webkitRelativePath gives "FolderName/Song.mp3")
-  const folderName = files[0].webkitRelativePath.split('/')[0];
-  formData.append('playlistName', folderName);
-
-  for (let i = 0; i < files.length; i++) {
-    formData.append('files', files[i]);
-  }
-
-  try {
-    const res = await fetch(`${API_URL}/upload-playlist`, {
-      method: 'POST',
-      body: formData, // Auto-sets Content-Type to multipart/form-data
-    });
-    const data = await res.json();
-    alert(data.message);
-    loadData(); // Refresh UI
-  } catch (error) {
-    console.error(error);
-    alert("Upload failed.");
-  } finally {
-    setIsUploading(false);
-  }
-};
-
 
 function App() {
   const [songs, setSongs] = useState([]);
@@ -110,7 +64,7 @@ function App() {
   const [isUploading, setIsUploading] = useState(false);
 
   // UI STATES
-  const [rightPanel, setRightPanel] = useState(null); // 'lyrics', 'queue', or null
+  const [rightPanel, setRightPanel] = useState(null); 
   const [syncedLyrics, setSyncedLyrics] = useState([]);
   const [plainLyrics, setPlainLyrics] = useState(""); 
   const [activeLyricIndex, setActiveLyricIndex] = useState(-1);
@@ -127,7 +81,39 @@ function App() {
   };
   useEffect(() => { loadData(); }, []);
 
-// --- NEW "READABLE SCRIPT" LYRICS ENGINE ---
+  // --- MOVED INSIDE COMPONENT TO ACCESS STATE ---
+  const handleFolderUpload = async (event) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploading(true);
+    const formData = new FormData();
+
+    // Use folder name as playlist name
+    const folderName = files[0].webkitRelativePath.split('/')[0];
+    formData.append('playlistName', folderName);
+
+    for (let i = 0; i < files.length; i++) {
+      formData.append('files', files[i]);
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/upload-playlist`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      alert(data.message);
+      loadData(); 
+    } catch (error) {
+      console.error(error);
+      alert("Upload failed.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // --- LYRICS ENGINE ---
   useEffect(() => {
     if (!currentSong) return;
     
@@ -135,7 +121,6 @@ function App() {
     setPlainLyrics("Searching...");
     setActiveLyricIndex(-1);
 
-    // Clean title for better search results
     const cleanTitle = currentSong.title.replace(/\(.*\)/g, "").trim();
     const query = `${cleanTitle} ${currentSong.artist}`;
 
@@ -143,22 +128,10 @@ function App() {
       .then(res => res.json())
       .then(data => {
         if (data && data.length > 0) {
-          // STRATEGY: Find the best version that we can actually read (Latin script)
-          
-          // 1. Priority: Readable + Synced
           let bestMatch = data.find(item => item.syncedLyrics && isReadable(item.syncedLyrics));
+          if (!bestMatch) bestMatch = data.find(item => item.plainLyrics && isReadable(item.plainLyrics));
+          if (!bestMatch) bestMatch = data[0];
 
-          // 2. Secondary: Readable + Plain Text
-          if (!bestMatch) {
-             bestMatch = data.find(item => item.plainLyrics && isReadable(item.plainLyrics));
-          }
-
-          // 3. Fallback: If absolutely no readable versions exist, use the first result
-          if (!bestMatch) {
-             bestMatch = data[0];
-          }
-
-          // --- RENDER ---
           if (bestMatch.syncedLyrics && isReadable(bestMatch.syncedLyrics)) {
             setSyncedLyrics(parseLRC(bestMatch.syncedLyrics));
             setPlainLyrics("");
@@ -179,11 +152,9 @@ function App() {
       });
   }, [currentSong]);
 
-  // --- SYNC LOGIC (The "PyVidrome" Logic) ---
+  // --- SYNC LOGIC ---
   useEffect(() => {
     if (syncedLyrics.length === 0) return;
-
-    // Find the last lyric line that has passed
     let idx = -1;
     for (let i = 0; i < syncedLyrics.length; i++) {
       if (syncedLyrics[i].time <= progress) {
@@ -192,10 +163,8 @@ function App() {
         break;
       }
     }
-
     if (idx !== activeLyricIndex) {
       setActiveLyricIndex(idx);
-      // Auto-scroll logic
       const element = document.getElementById(`lyric-${idx}`);
       if (element) {
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -218,7 +187,7 @@ function App() {
     });
   }, [currentSong]);
 
-  // Context Menu & Playlist Logic
+  // Context Menu
   const handleContextMenu = (e, songId) => {
     e.preventDefault();
     setContextMenu({ visible: true, x: e.clientX, y: e.clientY, songId });
@@ -256,11 +225,10 @@ function App() {
   };
 
   const toggleRightPanel = (panelName) => {
-    if (rightPanel === panelName) setRightPanel(null); // Close if already open
+    if (rightPanel === panelName) setRightPanel(null); 
     else setRightPanel(panelName);
   };
 
-  // Logic to seek audio when clicking a lyric line
   const handleLyricClick = (time) => {
     if(time >= 0 && audioRef.current) {
         audioRef.current.currentTime = time;
@@ -280,7 +248,7 @@ function App() {
 
   return (
     <div className="app-layout">
-      {/* SIDEBAR (Left) */}
+      {/* SIDEBAR */}
       <div className="sidebar">
         <div className="logo">🎵 Music</div>
         <div className="nav-links">
@@ -290,7 +258,7 @@ function App() {
           <button onClick={handleSync}>
             <SyncIcon style={{fontSize: 20, verticalAlign:'middle', marginRight: 10}}/> Sync
           </button>
-          {/* HIDDEN INPUT FOR FOLDER SELECTION */}
+          
           <input
             type="file"
             id="folderInput"
@@ -321,7 +289,7 @@ function App() {
         </div>
       </div>
 
-      {/* MAIN CONTENT (Center) */}
+      {/* MAIN CONTENT */}
       <div className="main-view">
         <div className="main-header">
           <input type="text" placeholder="Search..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
@@ -355,7 +323,7 @@ function App() {
         </div>
       </div>
 
-      {/* RIGHT SIDEBAR (Lyrics / Queue) - Overlays on right side */}
+      {/* RIGHT SIDEBAR */}
       <div className={`right-panel ${rightPanel ? 'open' : ''}`}>
         <div className="panel-header">
            <h2>{rightPanel === 'lyrics' ? 'Lyrics' : 'Queue'}</h2>
@@ -364,10 +332,8 @@ function App() {
 
         {rightPanel === 'lyrics' && (
            <div className="panel-content lyrics-container">
-               {/* Cover Art in Lyrics View */}
                <img src={currentCover} style={{width:150, height:150, borderRadius:8, marginBottom: 20}}/>
                
-               {/* Synced Lyrics Logic */}
                {syncedLyrics.length > 0 ? (
                    syncedLyrics.map((line, i) => (
                        <p 
@@ -380,7 +346,6 @@ function App() {
                        </p>
                    ))
                ) : (
-                   /* Plain Text Fallback */
                    <p className="plain-lyrics">{plainLyrics}</p>
                )}
            </div>
@@ -468,5 +433,3 @@ function App() {
 }
 
 export default App;
-
-// ---
